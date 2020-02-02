@@ -1,0 +1,51 @@
+#!/usr/bin/perl
+
+# Makefile usage:
+#
+# %: %.pl | VERSION.pl
+#	perlpp $< > $@
+#	@chmod 755 $@
+#
+# VERSION.pl: $(SRC)
+#	mkversionpl | grep -v MKDIR > $@.bkp; mv $@.bkp $@
+
+$CK_="\033[90m"; # color black
+$CD_="\033[0m";  # color default
+
+$PACKAGE	= `getversion -pkg`;
+$VERSION	= `getversion -ver`;
+$COPYLEFT	= `getversion -cpy`;
+$SUBVERSION	= `mkdist -sub`;
+$MKDATE		= `date '+%Y%m%d.%H%M'`;
+$MKHOST		= `hostname`;
+$MKDIR		= `pwd`;
+$MKCPU		= `cat /proc/cpuinfo | grep 'model name' | head -1`;
+
+$PACKAGE	=~ s/\n//g;
+$VERSION	=~ s/\n//g;
+$COPYLEFT	=~ s/\n//g;
+$SUBVERSION	=~ s/\n//g;
+$MKDATE		=~ s/\n//g;
+$MKHOST		=~ s/\n//g;
+$MKDIR		=~ s/\n//g;
+$MKCPU		=~ s/\n//g;
+
+$MKCPU =~ s/\(R\)//g;
+$MKCPU =~ s/\(TM\)//g;
+$MKCPU =~ s/ CPU / /g;
+$MKCPU =~ s/^[a-z \t]+:\h*//g;
+$MKCPU =~ s/@ ([0-9.]+GHz)/($1)/g;
+
+$s .= "\$PACKAGE = \"$PACKAGE\";\n";
+$s .= "\$VERSION = \"$VERSION\";\n";
+$s .= "\$SUBVERSION = \"$SUBVERSION\";\n";
+$s .= "\$COPYLEFT = \"$COPYLEFT\";\n";
+$s .= "\$MKDATE = \"$MKDATE\";\n";
+$s .= "\$MKHOST = \"$MKHOST\";\n";
+$s .= "\$MKDIR = \"$MKDIR\";\n";
+$s .= "\$MKCPU = \"$MKCPU\";\n";
+
+# print STDERR "${CK_}create VERSION.pl for $PACKAGE-$VERSION.$SUBVERSION$CD_\n";
+
+print $s;
+

@@ -1,0 +1,952 @@
+#!/usr/bin/perl
+
+our    $PACKAGE = "paratest";
+our    $VERSION = "0.1";
+our $SUBVERSION = "none";
+our   $COPYLEFT = "(c) R.Jaksa 2019, GPLv3";
+
+our    $PKGNAME = "paratest-0.1";
+our     $PKGMSG = "paratest-0.1 (c) R.Jaksa 2019, GPLv3";
+our   $PKGBUILT = "built 20200121.2318 on brix";
+our    $PKGLONG = "paratest-0.1 (c) R.Jaksa 2019, GPLv3 (built 20200121.2318 on brix)";
+
+our   $MAKEDATE = "20200121.2318";
+our   $MAKEHOST = "brix";
+our    $MAKEDIR = "~/prj/datautils/paratest";
+our    $MAKECPU = "Intel Core i5-6200U (2.30GHz)";
+# ------------------------------------------------------------------------------------ HELP
+
+sub printhelp {
+  my $help = $_[0];
+
+  # commented-out
+  $help =~ s/(\n\#.*)*\n/\n/g;
+
+  if($SUBVERSION ne "none") {
+    $SUB = $SUBVERSION;
+    $BLT = " $CK_(built $MKDATE on $MKHOST)$CD_"; }
+
+  $help .= "VERSION\n";
+  $help .= "    $PACKAGE-$VERSION$SUB $COPYLEFT$BLT\n\n";
+
+  # CC(text)
+  my %REX; my $i=0; $REX{$i++} = $3 while $help =~ s/([^A-Z0-9])(C[CWD])\((.+?)\)/${1}__c$2${i}__/;
+
+  # TODO: use push array to avoid being overwritten later
+  $help =~ s/(\n[ ]*)(-[a-zA-Z0-9]+(\[?[ =][A-Z]{2,}(x[A-Z]{2,})?\]?)?)([ \t])/$1$CC_$2$CD_$5/g;
+
+  $help =~ s/\[([+-])?([A-Z]+)\]/\[$1$CC_$2$CD_\]/g;
+  $help =~ s/(\n|[ \t])(([A-Z_\/-]+[ ]?){4,})/$1$CC_$2$CD_/g;
+
+  # CC(text)
+  $help =~ s/__cCC([0-9]+)__/$CC_$REX{$1}$CD_/g;
+  $help =~ s/__cCW([0-9]+)__/$CW_$REX{$1}$CD_/g;
+  $help =~ s/__cCD([0-9]+)__/$CD_$REX{$1}$CD_/g;
+
+  print $help; }
+
+# -----------------------------------------------------------------------------------------
+
+$CR_="\033[31m"; # color red
+$CG_="\033[32m"; # color green
+$CY_="\033[33m"; # color yellow
+$CB_="\033[34m"; # color blue
+$CM_="\033[35m"; # color magenta
+$CC_="\033[36m"; # color cyan
+$CW_="\033[37m"; # color white
+$CK_="\033[90m"; # color black
+$CP_="\033[91m"; # color pink
+$CL_="\033[92m"; # color lime
+$CS_="\033[93m"; # color sulphur yellow
+$CZ_="\033[94m"; # color azure
+$CO_="\033[95m"; # color orchid
+$CA_="\033[96m"; # color aqua cyan
+$CF_="\033[97m"; # color fluorescent white
+$CD_="\033[0m";  # color default
+
+# inar(\@a,$s) - check whether the string is in the array
+sub inar {
+  my $a=$_[0]; # array ref
+  my $s=$_[1]; # string
+  foreach(@{$a}) { return 1 if $_ eq $s; }
+  return 0; }
+
+# return mtime of file (the last modification time)
+sub getmtime {
+  my $file=$_[0];
+  my $t=0;
+  if(-e $file) {
+    $t=(stat($file))[9]; }
+  return $t; }
+sub getctime {
+  my $file=$_[0];
+  my $t=0;
+  if(-e $file) {
+    $t=(stat($file))[10]; }
+  return $t; }
+
+# check if file f1 is newer then f2
+sub newer {
+  my $f1=$_[0]; return 0 if not -f $f1; # always none < f2 => 0 
+  my $f2=$_[1]; return 1 if not -f $f2; # always f1 > none => 1
+  my $t1=getmtime($_[0]);
+  my $t2=getmtime($_[1]);
+  return 1 if $t1>$t2;
+  return 0; }
+
+# check if directory d1 is newer then d2
+sub newerdir {
+  my $d1=$_[0]; return 0 if not -d $d1; # always none < d2 => 0 
+  my $d2=$_[1]; return 1 if not -d $d2; # always d1 > none => 1
+  my $t1=getmtime($_[0]);
+  my $t2=getmtime($_[1]);
+  return 1 if $t1>$t2;
+  return 0; }
+
+# system wrapper with ctrl-c handling
+sub system2 { if(system(@_)) { print STDERR "\n"; exit 1; }}
+
+# just run command
+sub sys {
+  my $cmd = $_[0];
+  my $cmds = $cmd; $cmds = $_[1] if defined $_[1];
+  print "$CM_$cmds$CD_\n";
+  system $cmd; }
+sub sys_silent {
+  my $cmd = $_[0];
+  system $cmd; }
+
+# run command and return its stdout output
+sub cmd {
+  my $cmd = $_[0];
+  print "$CM_$cmd$CD_\n";
+  my $out = `$cmd`;
+  return $out; }
+sub cmd_silent {
+  my $cmd = $_[0];
+  my $out = `$cmd`;
+  return $out; }
+
+# write file from string
+sub writefile {
+  my $file = $_[0];
+  my $s = $_[1];
+  print "${CM_}write $file$CD_\n";
+  open(O,">$file") or die "Can't create file $file ($!).";
+  print O $s;
+  close(O); }
+# -------------------------------------------------------------------- VERBOSE MESSAGING
+$KLEN = 15;
+
+# return length of string without escape sequences
+sub esclen {
+  my $s = $_[0];
+  $s =~ s/\033\[[0-9]+m//g;
+  return length $s; }
+
+# left-pad string to given length
+sub lpad {
+  my $n = $_[0];
+  my $s = $_[1];
+  my $l = esclen $s;
+  my $r;
+  $r .= " " for $l..$n-1;
+  $r .= $s;
+  return $r; }
+
+# format 1st/2nd/3rd numbers
+sub fth {
+  my $n = $_[0];
+  my $s = $n;
+  my $l = $n%10;
+  if($n>3 and $n<21) { $s .= "th"; }
+  elsif($l == 1) { $s .= "st"; }
+  elsif($l == 2) { $s .= "nd"; }
+  elsif($l == 3) { $s .= "rd"; }
+  else           { $s .= "th"; }
+  return $s; }
+
+# --------------------------------------------------------------------------------------
+
+sub verbose {
+  my $c = $CC_;
+  my $k = $_[0];
+  my $v = $_[1];
+  if($_[0] =~ /^\033\[[0-9]*m$/) {
+    $c = $_[0];
+    $k = $_[1];
+    $v = $_[2]; }
+  print STDERR $c;
+  print STDERR lpad $KLEN,$k;
+  print STDERR ":$CD_ $v\n"; }
+
+sub error {
+  printf STDERR "$CR_%${KLEN}s: %s$CD_\n",$_[0],$_[1]; }
+
+# --------------------------------------------------------------------------------------
+use Time::HiRes qw(usleep);
+print STDERR "\n";
+
+# --------------------------------------------------------------------------------- HELP
+$HELP_MAIN=<<EOF;
+
+NAME
+    paratest - parametric test of program
+
+USAGE
+    paratest [OPTIONS] -r PROGRAM [CC(PROGRAM-OPTIONS)]
+
+DESCRIPTION
+    Repeatedly run arbitrary program with different arguments. The sequence
+    of parameters supplied into arguments of program can be either linear or
+    exponentially-growing for logarithmic x-axis plots.
+
+    To allow full utilization of the CPU and cache, tested programs are
+    executed in sequence, not in parallel.  However, multiple adequately
+    configured paratests can be run in parallel to fully squeeze the
+    multi-core CPU, when the performance available to the tested program
+    is not important.
+
+OPTIONS
+           -h  This help.
+           -v  Extra verbose.
+           -d  Debug output.
+           -q  Query mode, only report what to run.
+           -a  Include all individual tests results into log.
+      -n NAME  Name of test, output file will be CC(NAME.log).
+      -k KEYS  Comma separated list of keys to log.
+ -r PROG ARGS  Run program PROG with arguments ARGS.
+         -f5d  Default numbers-format for logs (see KEYS).
+
+       -p=STR  Parameter name (default CC(A)).
+      -A1=NUM  Start.
+      -A2=NUM  Stop.
+       -s=NUM  Step, or log multiplayer, might use %.
+       -n=NUM  Number of steps.
+         -log  Logarithmic schedule (default linear).
+      -dp=NUM  Decimal precision of A (default none).
+      -bs=NUM  Next A only after surpassing this batch step (default none).
+      -bS=NUM  Stop exactly on the batch steps (none). 
+
+      -sl=NUM  Sleep time between runs, decimal seconds (default none).
+      -eq=NUM  Number of concurrent equal runs.
+ CC(-rnd=NUM:NUM)  Number of concurrent randomized runs and radius.
+               Radius can be relative to the A parameter if given as %.
+    -jrn=PATH  Paths to journal files to use.
+    -log=PATH  Paths to log files to use.
+
+PROGRAM OPTIONS
+    Use the CC(A) letter to incorporate the tested parameter into
+    program arguments, like: CW(nntrain -n test-)CC(A)CW( -t 146-)CC(A)CW(-3)
+
+KEYS
+    The CW(-k mcups:f2d,amae:maxmax,amae:maxavgmin) specifies three columns to
+    store: the mcups and twice the amae variables from logs and journals. 
+    The keys are comma separated, and optionally after a colon every key can
+    carry its specs.  They can specify formatting of stored variable or
+    aggregation method.  The aggregation has three levels:
+
+      CC(level-1)  in-file aggregation, for log-files generated by tested
+               programs,
+      CC(level-2)  between-several-files aggregation, if more logs/journals
+               are specified,
+      CC(level-3)  between-tests aggregation, if concurrent or randomized
+               runs were requested.
+
+    The CW(maxavgmin) by its order specifies the CC(max) aggregation on level-1,
+    the CC(avg) on level-2 and the CC(min) on level-3.  If no level-3 method is
+    specified the level-2 will be reused.  The CC(min) is default for level-1.
+    Available aggregation and formatting methods are:
+
+          CC(min)  minimum, also as an alias CC(l),
+          CC(max)  maximum, also as an alias CC(h),
+          CC(avg)  average, also as an alias CC(a),
+          CC(f5d)  specifies max five decimal places to be stored,
+          CC(f5D)  zero-padded exactly five decimal places.
+
+EOF
+
+# ------------------------------------------------------------------------- PROGRAM ARGS
+
+# save progrom an its args
+our @PROG;
+for($i=0; $i<=$#ARGV; $i++) {
+  next if $ARGV[$i] eq "";
+  if($ARGV[$i] eq "-r") {
+    $ARGV[$i] = "";
+    for($j=$i+1; $j<=$#ARGV; $j++) {
+      push @PROG,$ARGV[$j];
+      $ARGV[$j] = ""; }}}
+
+# -------------------------------------------------------------------------------- ARGVS
+foreach(@ARGV) { if($_ eq "-h") { printhelp($HELP_MAIN); exit 0; }}
+foreach(@ARGV) { if($_ eq "-v") { $VERBOSE=1; $_=""; last; }}
+foreach(@ARGV) { if($_ eq "-d") { $DEBUG=1; $_=""; last; }}
+foreach(@ARGV) { if($_ eq "-q") { $QUERY=1; $_=""; last; }}
+foreach(@ARGV) { if($_ eq "-a") { $ALLOUT=1; $_=""; last; }}
+
+foreach(@ARGV) { if($_ =~ /^-f([0-9]+[dD])$/) { $DEFMT=$1; $_=""; last; }}
+
+# name
+our $NAME = "paratest";
+for($i=0; $i<$#ARGV; $i++) {
+  next if $ARGV[$i] eq "";
+  if($ARGV[$i] eq "-n") {
+    $NAME = $ARGV[$i+1];
+    $ARGV[$i] = ""; $ARGV[$i+1] = ""; last; }}
+
+our $PAR1;  foreach(@ARGV) { if(/^-p=(.*)$/)   { $PAR1=$1; $_=""; last; }}
+our $A1;    foreach(@ARGV) { if(/^-A1=(.*)$/)  { $A1=0+$1; $_=""; last; }}
+our $A2;    foreach(@ARGV) { if(/^-A2=(.*)$/)  { $A2=0+$1; $_=""; last; }}
+our $STEP;  foreach(@ARGV) { if(/^-s=(.*)$/)   { $STEP=$1; $_=""; last; }}
+our $STEPS; foreach(@ARGV) { if(/^-n=(.*)$/)   { $STEPS=0+$1; $_=""; last; }}
+our $XLOG;  foreach(@ARGV) { if($_ eq "-log")  { $XLOG=1; $_=""; last; }}
+our $PREC;  foreach(@ARGV) { if(/^-dp=(.*)$/)  { $PREC=0+$1; $_=""; last; }}
+
+our $BINC = 0;
+our $BAFT;  foreach(@ARGV) { if(/^-bs=(.*)$/)  { $BINC=0+$1; $BAFT=1; $_=""; last; }}
+our $BAT;   foreach(@ARGV) { if(/^-bS=(.*)$/)  { $BINC=0+$1; $BAT=1; $_=""; last; }}
+
+our $SLEEP; foreach(@ARGV) { if(/^-sl=(.*)$/)  { $SLEEP=0+$1; $_=""; last; }}
+
+our $KMIN;  foreach(@ARGV) { if(/^-min$/) { $KMIN=1; $_=""; last; }}
+our $KMAX;  foreach(@ARGV) { if(/^-max$/) { $KMAX=1; $_=""; last; }}
+our $KAVG;  foreach(@ARGV) { if(/^-avg$/) { $KAVG=1; $_=""; last; }}
+
+our @PJRN;  foreach(@ARGV) { if(/^-jrn=(.*)$/) { push @PJRN,$1; $_=""; }}
+our @PLOG;  foreach(@ARGV) { if(/^-log=(.*)$/) { push @PLOG,$1; $_=""; }}
+
+# keys
+our @KEYS;
+for($i=0; $i<$#ARGV; $i++) {
+  next if $ARGV[$i] eq "";
+  if($ARGV[$i] eq "-k") {
+    push @KEYS,split(/,/,$ARGV[$i+1]);
+    $ARGV[$i] = ""; $ARGV[$i+1] = ""; }}
+
+# concurrent runs
+our $EQUAL=1;
+foreach(@ARGV) { if(/^-eq=(.*)$/)  { $EQUAL=0+$1; $_=""; last; }}
+
+# randomized runs
+our $RAND;
+our $RAD=1;
+our $RADMAX;
+foreach(@ARGV) { if(/^-rnd=([^:]*)(:(.*))?$/) {
+  $RAND=0+$1;
+  $RAD=$3 if defined $3;
+  $_=""; last; }}
+if($RAD=~/%/) {
+  if($RAD=~s/%<(.*)/%/) { $RADMAX = 0+$1; }
+  $RAD = 0+$RAD; $RAD .= "%"; }
+else {
+  $RAD = 0+$RAD; }
+
+# unknown args
+my $ok=1;
+foreach(@ARGV) {
+  next if $_ eq "";
+  error("unknown arg",$_);
+  $ok=0; }
+exit 1 if not $ok;
+
+# --------------------------------------------------------------------------------- AUTO
+
+# multiplier resolver
+if(defined $STEP) {
+  my $step = 0 + $STEP;
+  $step /= 100 if $STEP =~ /%$/;
+  $step += 1 if $step <= 1;
+  $STEP = $step; }
+
+# decimal precisions
+$PREC=0 if not defined $PREC;
+our $APREC = $PREC;
+
+# batch step
+our $ABINC = $BINC;
+our $ABAT = $BAT;
+
+# parameter name
+$PAR1 = "A" if not defined $PAR1;
+
+# A-parameter
+our $ALOG; $ALOG=1 if defined $XLOG;
+our $ASTEP; $ASTEP=$STEP if defined $STEP;
+our $ASTEPS; $ASTEPS=$STEPS if defined $STEPS;
+
+# log base
+our $ABASE;
+if(defined $ALOG) {
+  if(defined $ASTEP) { $ABASE = $ASTEP; }
+  else		     { $ABASE = 2; }}
+
+# end not specified
+$ASTEPS = 100 if not defined $A2 and not defined $ASTEPS;
+
+# ------------------------------------------------------------------------------ SUMMARY
+
+verbose("name",$NAME);
+
+my $alog=""; $alog="log " if defined $ALOG;
+my $a1=""; $a1="${CK_}A1=$CD_$A1 " if defined $A1;
+my $a2=""; $a1="${CK_}A2=$CD_$A2 " if defined $A2;
+my $as=""; $as="${CK_}step=$CD_$ASTEP " if defined $ASTEP;
+my $an=""; $an="${CK_}steps=$CD_$ASTEPS " if defined $ASTEPS;
+
+verbose("A range","$alog$a1$a2$as$an");
+
+if(defined $RAND and $RAND>=1) {
+  my $rmax=""; $rmax=" ${CK_}maxradius=$CD_$RADMAX" if defined $RADMAX;
+  verbose("randomize","${CK_}runs=$CD_$RAND ${CK_}radius=$CD_$RAD$rmax"); }
+
+my $prog = "";
+$prog .= "$_ " foreach @PROG;
+$prog =~ s/$PAR1/${CC_}$PAR1$CD_/g;
+
+verbose("program",$prog);
+
+my $pjrn = "";
+$pjrn .= "$_ " foreach @PJRN;
+$pjrn =~ s/$PAR1/${CC_}$PAR1$CD_/g;
+
+verbose("journals",$pjrn) if @PJRN;
+
+my $plog = "";
+$plog .= "$_ " foreach @PLOG;
+$plog =~ s/$PAR1/${CC_}$PAR1$CD_/g;
+
+verbose("logs",$plog) if @PLOG;
+
+my $keys;
+foreach(@KEYS) {
+  (my $k = $_) =~ s/(:.*)$/$CK_$1$CD_/;
+  $keys .= "$k "; }
+
+verbose("keys",$keys);
+
+# -------------------------------------------------------------------- KEYS SPECS PARSER
+our %KFMT;  # key format
+our %KM1;   # key 1st level-1 in-file mode
+our %KM2;   # key 2nd level-2 between-files mode
+our %KM3;   # key 3rd level-3 between-tests mode
+our %KM1d;  # whether the mode is default or explicitly reqeusted
+our %KM2d;  # whether the mode is default or explicitly reqeusted
+our %KM3d;  # whether the mode is default or explicitly reqeusted
+my $ok = 1; # whether all specs were recognized
+
+# multiple keys with same keyname
+my @knames;
+my %nname;
+foreach my $k (@KEYS) {
+  $k =~ /^([^:]*)(:.*)?$/;
+  my ($k1,$k2) = ($1,$2);
+  if(inar \@knames,$k1) {
+    $nname{$k1}++;
+    $k = "$k1~$nname{$k1}$k2"; }
+  else {
+    push @knames,$k1;
+    $nname{$k1} = 1; }}
+
+# aliases
+sub kalias {
+  my $a = $_[0];
+  my $k = $a;
+  $k = "min" if $a eq "l";
+  $k = "max" if $a eq "h";
+  $k = "avg" if $a eq "a";
+  return $k; }
+
+# parser
+foreach my $k (@KEYS) {
+  my $fmt;
+  my $km1;
+  my $km2;
+  my $km3;
+  my $spc;
+  $spc = $1 if $k =~ s/:(.*)$//;
+
+  $fmt = "$1d" if $spc =~ s/f([0-9]+)d//;
+  $fmt = "$1D" if $spc =~ s/f([0-9]+)D//;
+
+  $km1 = kalias $1 if $spc =~ s/(avg|min|max|l|h|a)//;
+  $km2 = kalias $1 if $spc =~ s/(avg|min|max|l|h|a)//;
+  $km3 = kalias $1 if $spc =~ s/(avg|min|max|l|h|a)//;
+
+  if($spc ne "") {
+    error("unknown spec","$k:$spc");
+    $ok=0; }
+
+  if(not $km1) { $km1 = "min"; $KM1d{$k} = 1; }
+  if(not $km2) { $km2 = $km1;  $KM2d{$k} = 1; }
+  if(not $km3) { $km3 = $km2;  $KM3d{$k} = 1; }
+
+  $KM1{$k}  = $km1;
+  $KM2{$k}  = $km2;
+  $KM3{$k}  = $km3;
+  $KFMT{$k} = $fmt if defined $fmt; }
+
+# default format
+if(defined $DEFMT) {
+  foreach my $k (@KEYS) {
+    if(not defined $KFMT{$k}) {
+      $KFMT{$k} = $DEFMT; }}} 
+
+# verbose
+for(my $i=0; $i<=$#KEYS; $i++) {
+  my $ii = fth $i+1;
+  my $k = $KEYS[$i];
+  my $kk = $k; $kk = "$1$CK_$2$CD_" if $k =~ /^(.*)~([0-9]+)$/;
+  my $c1 = $CK_; $c1 = $CC_ if not $KM1d{$k};
+  my $c2 = $CK_; $c2 = $CC_ if not $KM2d{$k};
+  my $c3 = $CK_; $c3 = $CC_ if not $KM3d{$k};
+  my $s1 = " $c1$KM1{$k}$CD_";	 $s1="" if scalar(@PLOG) < 2; # no level-1 aggregation for journals yet
+  my $s2 = " $c2$KM2{$k}$CD_";	 $s2="" if scalar(@PJRN) + scalar(@PLOG) < 2;
+  my $s3 = " $c3$KM3{$k}$CD_";	 $s3="" if (not defined $RAND or $RAND<=1) and $EQUAL<=1;
+  my $sf = " $CC_$KFMT{$k}$CD_"; $sf="" if not defined $KFMT{$k};
+  verbose "$ii key","$CW_$kk$s1$s2$s3$sf"; }
+
+exit 1 if not $ok;
+
+# ---------------------------------------------------------------------------- EVALUATOR
+# ------------------------------------------------------------------------- READ JOURNAL
+
+# mine values from journal
+# note: no level-1 aggregation for journals yet
+sub readjournal {
+  my $p  = $_[0]; # path
+  my $kv = $_[1]; # output-ref for key-values
+  my $ku = $_[2]; # output-ref for key-units
+
+  # check
+  if(-f $p) { verbose "journal file","$CG_$p$CD_" if $VERBOSE; }
+  else      { error "missing journal",$p; return; }
+
+  # read journal file
+  foreach my $line (split /\n/,`cat $p`) {
+    next if $line =~ /^\h*\#/;
+    next if not $line =~ /^\h*([^:]*?):\h*([^\h]+?)(\h+(.*?))?\h*$/;
+    my ($k,$v,$u) = ($1,$2,$4); # key,value,unit
+    $k =~ s/\h+/_/g;
+
+    # store
+    my $ok = 0;
+    foreach my $kx (@KEYS) {
+      my $kk = $kx; $kk = $1 if $kx =~ /^(.*)~([0-9]+)$/;
+      if($kk eq $k) {
+	$ok = 1;
+	$$kv{$kx} = $v;
+	$$ku{$kx} = $u; }}
+
+    # report
+    if($VERBOSE) {
+      my $ck = $CK_;
+      my $cv = $CK_;
+      if($ok) { $ck = $CW_; $cv = $CD_; }
+      verbose $ck,$k,"$cv$v $CK_$u$CD_" if $ck ne $CK_ or $DEBUG; }}}
+
+# --------------------------------------------------------------------------------------
+# ------------------------------------------------------------------------ READ LOG-FILE
+
+# mine values from log-file
+sub readlog {
+  my $p  = $_[0];
+  my $kv = $_[1]; # output-ref for key-values
+
+  # check
+  if(-f $p) { verbose "log file","$CG_$p$CD_" if $VERBOSE; }
+  else      { error "missing log",$p; return; }
+
+  # read header of log file
+  my $cat = `cat $p`;
+  if(not $cat =~ /\#\h*(.*?)\h*(\n|$)/) { error "missing header",$p; return; }
+  my @hdr = split /[ \t]+/,$1;
+
+  # select columns
+  my @idx; # indexes of keys to log or -1
+  my @key; # keynames for given indexes
+  my @km1; # 
+
+  my $j=0; # index in indxexes array
+  foreach my $k (@KEYS) {
+    my $kk = $k; $kk = $1 if $k =~ /^(.*)~([0-9]+)$/;
+    my $idx = -1;
+    for(my $i=0; $i<=$#hdr; $i++) {
+      if($kk eq $hdr[$i]) {
+	$idx = $i; last; }}
+    next if $idx < 0;
+    $idx[$j] = $idx;
+    $key[$j] = $k;
+    $km1[$j] = $KM1{$k};
+    $j++; }
+
+  # report header
+  if($VERBOSE) {
+    my $hs;
+    foreach my $h (@hdr) {
+      my $c = $CK_;
+      my $sp = "";
+      if(inar \@key,$h) {
+	$c = $CW_;
+	for(my $i=0; $i<=$#idx; $i++) {
+	  if($key[$i] =~ /^$h(~|$)/) {
+	    $sp .= "$KM1{$key[$i]},"; }}
+	$sp =~ s/.$//;
+	$sp = "$CK_:$sp$CD_"; }
+      $hs .= "$c$h$sp$CD_ "; }
+    verbose "log header",$hs; }
+
+  # collect values
+  my @out;
+  my $N=0;
+  foreach my $line (split /\n/,$cat) {
+    next if $line =~ /^\h*\#/;
+    my @val = split /\h+/,$line;
+
+    # init
+    if(not $N) {
+      for(my $i=0; $i<=$#idx; $i++) {
+	if($km1[$i] eq "min" or $km1[$i] eq "max") { $out[$i] = $val[$idx[$i]]; }
+	if($km1[$i] eq "avg") { $out[$i] = 0; }}}
+
+    # level-1 aggregate
+    for(my $i=0; $i<=$#idx; $i++) {
+      my $v = $val[$idx[$i]];
+      if   ($km1[$i] eq "avg") { $out[$i] += $v; }
+      elsif($km1[$i] eq "max") { $out[$i] = $v if $v > $out[$i]; }
+      elsif($km1[$i] eq "min") { $out[$i] = $v if $v < $out[$i]; }
+      else { error("unknown spec","$key[$i]:$km1[$i]"); }}
+    $N++; }
+
+  # complete aggregation
+  for(my $i=0; $i<=$#idx; $i++) {
+    if($km1[$i] eq "avg") { $out[$i] /= $N; }}
+
+  # store result
+  for(my $i=0; $i<=$#idx; $i++) {
+    my $kk = $key[$i]; $kk =~ s/~([0-9]*)$/$CK_$1$CW_/;
+    verbose "$CK_$km1[$i]$CW_ $kk",$out[$i] if $VERBOSE;
+    $$kv{$key[$i]} = $out[$i]; }}
+
+# --------------------------------------------------------------------------------------
+
+sub evaluate {
+  my  $ti = $_[0]; # index of eq/rand test for given A
+  my   $a = $_[1]; # the A value, for substitution in journal/logfiles paths
+  my $GKV = $_[2]; # arrays of arrays of all (multiple-files multiple-tests) values for each key
+  my $GKA = $_[3]; # array A-values for all tests
+  my %GKU;	   # units for each key
+
+  # store A for each test
+  $$GKA[$ti] = $a;
+
+  # parse journals and logs
+  foreach my $p (@PJRN,@PLOG) {
+    my %kv;
+    my $path = $p;
+    $path =~ s/$PAR1/$a/g; # substitution
+
+    # get
+    if(inar \@PJRN,$p) { readjournal $path,\%kv,\%GKU; }
+    else	       { readlog $path,\%kv; }
+
+    # store
+    foreach my $k (@KEYS) {
+      next if not defined $kv{$k};
+      push @{$$GKV{$k}[$ti]},$kv{$k}; }}}
+
+# ---------------------------------------------------------------------------- MAIN LOOP
+# ---------------------------------------------------------------------------- AGGREGATE
+
+# single-level aggregate
+sub aggregate {
+  my  $arr = $_[0]; # array reference
+  my $mode = $_[1]; # mode: min/max/avg
+
+  # init
+  my $res = $$arr[0];
+     $res = 0 if $mode eq "avg";
+
+  # aggregate
+  foreach my $v (@{$arr}) {
+    if   ($mode eq "avg") { $res += $v; }
+    elsif($mode eq "max") { $res = $v if $v > $res; }
+    elsif($mode eq "min") { $res = $v if $v < $res; }}
+
+  # finish
+  if($mode eq "avg") { $res /= scalar(@{$arr}); }
+
+  return $res; }
+
+# level-2 and level-3 aggregator
+sub aggregator {
+  my $gkv = $_[0];
+
+  # aggregated values for each key
+  my %agg;
+  foreach my $k (@KEYS) {
+    (my $kk=$k) =~ s/~([0-9]*)$/$CK_$1$CW_/;
+
+    # aggregate from all files 
+    my @tests;
+    foreach my $test (@{$$gkv{$k}}) {
+      my $v = aggregate $test,$KM2{$k};
+      verbose "${CK_}l2 $KM2{$k} $CS_$kk","$v $CK_<- @{$test}$CD_" if $VERBOSE and $#{$test}>0;
+      push @tests,$v; }
+
+    # aggregate from all tests
+    my $v = aggregate \@tests,$KM3{$k};
+    verbose "${CK_}l3 $KM3{$k} $CL_$kk","$v $CK_<- @tests$CD_" if $VERBOSE and $#tests>0;
+    $agg{$k} = $v; }
+
+  return %agg; }
+
+# ------------------------------------------------------------------------------- HEADER
+
+sub mkheader {
+  my $gkv = $_[0];
+  my $gka = $_[1];
+
+  # parameter A
+  my $s = "# a ";
+
+  # result keys
+  foreach my $k (@KEYS) {
+    (my $kk=$k)=~s/~//;
+    $s.=" $kk"; }
+
+  # no details output
+  return $s if not $ALLOUT;
+
+  # A-parameters of individual tests (possibly randomized)
+  if($#{@gka}) {
+    $s .= " ";
+    for(my $i=0; $i<=$#{$gka}; $i++) {
+      my $ii = $i+1;
+      $s .= " a$ii"; }}
+
+  # individual groups of results for each key
+  foreach my $k (@KEYS) {
+    (my $kk=$k)=~s/~//;
+
+    # compute number of results for key $k
+    my $j=0; foreach(@{$$gkv{$k}}) { $j++ foreach @{$_}; }
+
+    # print indexed key-names in the form key_1a key_1b key_2a
+    # where 1,2 are tests indexes and a,b are files indexes
+    if($j>1) {
+      $s .= " ";
+      for(my $ti=0; $ti<=$#{$$gkv{$k}}; $ti++) {
+	my $tii = $ti+1; $tii="" if $#{$$gkv{$k}} == 0;
+	for(my $i=0; $i<=$#{$$gkv{$k}[$ti]}; $i++) {
+	  my $ii = chr(ord('a')+$i); $ii="" if $#{$$gkv{$k}[$ti]} == 0;
+	  $s .= " ${kk}_$tii$ii"; }}}}
+
+  return $s; }
+
+# ------------------------------------------------------------------- NUMBERS FORMATTING
+
+# numbers formatting: hard n decimal places
+sub Dfmt {
+  my $num = $_[0];  # number
+  my $dec = $_[1];  # decimal places
+  my $res = sprintf "%.${dec}f",$num;
+  return $res; }
+
+# numbers formatting: soft n decimal places
+sub dfmt {
+  my $num = $_[0];  # number
+  my $dec = $_[1];  # decimal places
+  my $res = sprintf "%.${dec}f",$num;
+  $res =~ s/0+$// if $res =~ /\./;
+  $res =~ s/\.$//;
+  return $res; }
+
+# numbers formatting, formats:
+# f3d = max 3 decimal points
+# f3D = exactly 3 decimal points, zero padded
+sub nfmt {
+  my $num = $_[0];
+  my $fmt = $_[1];
+  my $res;
+  if   ($fmt =~ /([0-9]+)d/)			{ $res = dfmt $num,$1; }
+  elsif($fmt =~ /([0-9]+)D/)			{ $res = Dfmt $num,$1; }
+  elsif($num =~ /^[+-]?[0-9]*(\.[0-9]*)?$/)	{ $res = dfmt $num,5; }
+  else						{ $res = $num; }
+  return $res; }
+
+# ------------------------------------------------------------------------------ DETAILS
+
+sub details {
+  my $gkv = $_[0];
+  my $gka = $_[1];
+  my $s;
+
+  # A-parameters of individual tests
+  if($#{$gka}) {
+    $s .= " ";
+    $s .= " $_" foreach @{$gka}; }
+
+  # individual groups of results for each key
+  foreach my $k (@KEYS) {
+
+    # compute number of results for key $k
+    my $j=0; foreach(@{$$gkv{$k}}) { $j++ foreach @{$_}; }
+
+    # individual results in groups for each key
+    if($j>1) {
+      $s .= " ";
+      foreach(@{$$gkv{$k}}) { $s .= " " . nfmt $_,$KFMT{$k} foreach @{$_}; }}}
+
+  return $s; }
+
+# ------------------------------------------------------------------------------ LOGLINE
+our $OUN = 1;		# actual number of log lines
+our $OUT = "$NAME.log";	# log-file name
+$OUT =~ s/ /-/g;
+verbose("results",$OUT);
+
+sub logline {
+  my   $a = $_[0]; # the A value
+  my $gkv = $_[1]; # arrays of arrays of all (multiple-files multiple-tests) values for each key
+  my $gka = $_[2]; # array A-values for all tests
+  my %agg = aggregator $gkv;
+
+  # add aggregated values to the output line
+  my $s .= "$a ";
+  foreach my $k (@KEYS) {
+    $s .= " " . nfmt $agg{$k},$KFMT{$k}; }
+
+  # verbose without header and details
+  verbose "line $OUN",$s if $VERBOSE;
+
+  # add detailed all-tests outputs
+  $s .= details $gkv,$gka if $ALLOUT;
+
+  # add header before the 1st line
+  if($OUN == 1) {
+    my $h = mkheader $gkv,$gka; # this is based on the 1st line only
+    $s = "$h\n$s"; }
+  $OUN++;
+
+  # save the line
+  open OUT,">>$OUT";
+  print OUT "$s\n";
+  close OUT; }
+
+# --------------------------------------------------------------------------------------
+
+# A-iterations
+my $Ar = 1; # realized iterations
+my $Ai = 1; # base iterations including skipped due to precision test etc.
+my $Ab = 0; # batch iterations
+
+# correct A1 to ABINC
+if($ABINC and defined $A1) { $Ab+=$ABINC while $Ab<=$A1; }
+
+# start A
+my $A = 1;
+$A = $A1 if defined $A1;
+
+# previous A
+my $Alast = $A;
+
+# loop itself
+print STDERR "\n" if $QUERY or not $VERBOSE;
+while(1) {
+
+  # decimal precision
+  my $Aout = sprintf "%.${APREC}f",$A;
+  my $Arnd = $Aout; # for randomization
+
+  # concurrent runs
+  my %KV; # arrays of values for each key
+  my $rn = 1; $rn = $RAND if defined $RAND and $RAND>=1; # number of randomized runs
+
+  # randomization loop
+  my %GKV;  # arrays of arrays of all (multiple-files multiple-tests) values for each key
+  my @GKA;  # array A-values for all tests
+  my $ti=0; # total rand+eq index
+  for(my $ri=0; $ri<$rn; $ri++) {
+
+    # randomization shift Arnd=Aout-RAD+rnd
+    my $rad = $RAD;
+       $rad = $Aout * $1/100 if $RAD =~ /^(.*)%$/;
+       $rad = $RADMAX if defined $RADMAX and $rad>$RADMAX;
+    my $srnd;
+    if(defined $RAND and $RAND>=1) {
+      my $rnd = rand(2*$rad);
+      my $arnd = $Aout-$rad+$rnd;
+      $Arnd = sprintf "%.${APREC}f",$arnd;
+      $Arnd = $A2 if defined $A2 and $Arnd > $A2;
+      $Arnd = $A1 if defined $A1 and $Arnd < $A1;
+      $Arnd = 1 if not defined $A1 and $Arnd < 1;
+      $srnd = sprintf " Arnd=$Aout-$rad+%.3f=%.3f=$CD_$Arnd",$rnd,$arnd; }
+
+    # equal-runs loop
+    for(my $ei=0; $ei<$EQUAL; $ei++) {
+
+      # program
+      my $prog = $PROG[0];
+      my @args;
+      for(my $i=1; $i<=$#PROG; $i++) {
+	my $s = $PROG[$i];
+	$s =~ s/$PAR1/$Arnd/g; # for substitution use the randomized-A
+	push @args,$s; }
+
+      # report
+      print STDERR "\n" if $VERBOSE and not $QUERY;
+      if($VERBOSE and ($EQUAL>1 or (defined $RAND and $RAND>=1))) {
+	my $se; $se = sprintf " equal=%s",fth($ei+1) if $EQUAL>1;
+	my $sr; $sr = sprintf " randomized=%s",fth($ri+1) if defined $RAND and $RAND>=1;
+	printf STDERR "${CK_}test=%s$sr$se$CD_\n",fth($Ar); }
+      printf STDERR "${CK_}Ar=$Ar Ai=$Ai A=%.3f Aout=$CD_$Aout$CK_ Ab=$Ab$srnd$CD_\n",$A if $DEBUG;
+
+      my $cmd = $prog;
+      $cmd .= " $_" foreach @args;
+      printf STDERR "$CM_%s$CD_\n",$cmd;
+
+      # run									 <== RUN
+      if(not $QUERY) {
+	usleep(1000000*$SLEEP) if defined $SLEEP;
+	system2 $prog,@args;
+	evaluate $ti++,$Arnd,\%GKV,\@GKA; }}} # randomized A to correspond with how program was called
+
+  # save results                                                                <== SAVE
+  logline $Aout,\%GKV,\@GKA if not $QUERY;
+
+  # logarithmic next A,Ab
+  if($ALOG) {
+    while(1) {
+      $Ai++;
+      $A = $ABASE ** $Ai;
+      my $aout = sprintf "%.${APREC}f",$A;
+      if($ABINC) {
+	if($aout >= $Ab) {
+	  $Ab += $ABINC while $Ab < $aout;
+	  last; }}
+      else {
+	last if $aout > $Aout; }}}
+
+  # linear next A,Ab
+  else {
+    if(defined $ASTEP) { $A += $ASTEP; }
+    else	       { $A ++; }
+    $Ai++; }
+
+  # at-batch stops
+  $A = $Ab-$ABINC if defined $ABAT;
+
+  # next Ar
+  $Ar++;
+
+  # stop on A
+  if(defined $A2 and $A>$A2) { last; }
+
+  # stop on Ai
+  if(defined $ASTEPS and $Ar>$ASTEPS) { last; }
+
+  $Alast = $Aout; }
+
+print STDERR "\n";
+# --------------------------------------------------------------------------------------
