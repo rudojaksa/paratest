@@ -17,4 +17,7 @@ install: all
 clean:
 	rm -f $T
 
+README.md: $T
+	$< -h | man2md > $@
+
 include ~/.github/Makefile.git
