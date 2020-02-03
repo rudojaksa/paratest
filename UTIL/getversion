@@ -24,7 +24,7 @@ ${CC_}USAGE$CD_
 ${CC_}DESCRIPTION$CD_
     The getversion utility auto-detects the version information for
     the package rooted in current directory.  It does so by examination
-    of possible configuration files, or filenames.
+    of possible configuration files, or filenames. 
     For not identified values the \"unknown\" keyword will be used.
 
 ${CC_}OPTIONS$CD_
